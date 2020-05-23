@@ -17,8 +17,8 @@ class MultilayerPerceptron:
     __relu = lambda x: max(0, x)
 
     # Derivatives of activation functions
-    __sigmoid_derivative = lambda x: __sigmoid(x) * (1 - __sigmoid(x))
-    __tanh_derivative = lambda x: 1 - __tanh(x)**2
+    __sigmoid_derivative = lambda x: MultilayerPerceptron.__sigmoid(x) * (1 - MultilayerPerceptron.__sigmoid(x))
+    __tanh_derivative = lambda x: 1 - MultilayerPerceptron.__tanh(x)**2
     __relu_derivative = lambda x: int(x >= 0)
 
 
@@ -35,7 +35,9 @@ class MultilayerPerceptron:
 
         self.weights = list()
         self.biases = list()
+        self.learning_factor = learning_factor
         self.activation_function = MultilayerPerceptron.__sigmoid
+        self.activation_function_derivative = MultilayerPerceptron.__sigmoid_derivative
         previous_layer_neurons = inputs_number
 
         for arg in args:
@@ -55,13 +57,13 @@ class MultilayerPerceptron:
         layer_input = inputs
 
         for weights, biases in zip(self.weights[:-1], self.biases[:-1]):
-            self.inputs.append(layer_input)
-            output = np.array( list( map(self.activation_function, weights @ layer_input + biases)))
+            sigma = weights @ layer_input + biases
+            output = np.array( list( map(self.activation_function, sigma)))
+            self.pre_squashing.append(sigma)
+            self.outputs.append(output)
             layer_input = output
 
-        self.inputs.append(layer_input)
         output = self.weights[-1] @ layer_input + self.biases[-1]
-
         return output
 
 
@@ -76,26 +78,45 @@ class MultilayerPerceptron:
         return cost
 
 
-    def backpropagate(self, correct_values, produced_values):
-        # //TODO: implement backpropagation
-        pass
+    def backpropagate(self, input, output, reference):
+        self.layer_errors = []
+        self.layer_errors.append((output - reference) * self.activation_function_derivative(output))
+        # self.layer_errors.append(output - reference)
 
-    def train(self):
-        self.inputs = []
+        # calculating node errors
+        for sigma, activation, i in zip(self.pre_squashing[::-1], self.outputs[::-1], reversed(range(len(self.outputs)+1))):
+            if self.activation_function == MultilayerPerceptron.__sigmoid:
+                derivative_values = activation * (1 - activation)
+            elif self.activation_function == MultilayerPerceptron.__tanh:
+                derivative_values = 1 - activation**2
+            else:
+                derivative_values = self.activation_function_derivative(sigma)
+
+            self.layer_errors.append(self.weights[i].T @ self.layer_errors[-1] * derivative_values)
+        self.layer_errors.reverse()
+
+        # calculating weights changes
+        for i in range(len(self.weights)):
+            if i == 0:
+                input_array = input
+            else:
+                input_array = self.outputs[i-1]
+
+            self.weights[i] += np.matrix(self.layer_errors[i]).T @ np.matrix(input_array * self.learning_factor)
+            self.biases[i] += self.layer_errors[i] * self.learning_factor
+
+
+    def train(self, epochs):
+        self.pre_squashing = []
         self.data = self.data / 1000;
 
-        for record in self.data:
-            measurement = np.array([ record[0], record[1] ])
-            reference = np.array([ record[2], record[3] ])
+        for record in enumerate(self.data):
+            self.outputs = []
+            measurement = np.array([ record[1][0], record[1][1] ])
+            reference = np.array([ record[1][2], record[1][3] ])
 
             output = self.feed_forward(measurement)
-
-            cost = self.get_network_cost(output, reference)
-            # print(output)
-            # print(reference)
-            # print(cost)
-            # what happens here
-            break
+            self.backpropagate(measurement, output, reference)
 
 
     def get_data(self, path):
@@ -112,12 +133,6 @@ if __name__ == '__main__':
 
     mlp = MultilayerPerceptron(2, 2, 6, 5)
     mlp.get_data(tpath)
-    mlp.train()
+    mlp.train(1000)
 
     df = load_data(tpath)
-    # a = (df['measurement x'][0], df['measurement y'][0])
-    # print(mlp.feed_forward([2.071,4.075]))
-    # for weights in mlp.weights:
-        # print(weights)
-
-    # mlp.train()
