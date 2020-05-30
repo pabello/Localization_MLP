@@ -25,7 +25,6 @@ class MultilayerPerceptron:
         @requires outputs_number - number of output neurons
         @requires args - set of layer sizes one by one
         """
-        '6.5.2_factor=0.1_take-0.npy'
 
         self.filename = ''
         self.weights = list()
@@ -139,6 +138,8 @@ class MultilayerPerceptron:
                         self.weight_changes = [wc * 0 for wc in self.weight_changes]
                         self.bias_changes = [bc * 0 for bc in self.bias_changes]
         save_numpy_file(self.weights, self.biases, self.filename+'take-{}.npy'.format(take))
+        with open('log.txt', 'a') as file:
+            file.write('\n')
 
 
     def test_error(self):
@@ -147,9 +148,12 @@ class MultilayerPerceptron:
             measurement = np.array([ record[0], record[1] ])
             reference = np.array([ record[2], record[3] ])
             output = self.test_feed(measurement)
-            error = output_error(output.reshape(1, len(output)), reference)
+            error = output_error(output.flatten(), reference)
             errors.append(error)
-        print(np.mean(np.array(errors), axis=0))
+
+        with open('log.txt', 'a') as file:
+            file.write(str(np.mean(np.array(errors), axis=0)) + '\n')
+        # print(np.mean(np.array(errors), axis=0))
 
 
     def test_model(self, take=0):
@@ -160,14 +164,15 @@ class MultilayerPerceptron:
             measurement = np.array([ record[0], record[1] ])
             reference = np.array([ record[2], record[3] ])
             output = self.test_feed(measurement)
-            error = output_error(output, reference)
+            error = output_error(output.flatten(), reference)
             errors.append(error)
             self.test_outputs.append(measurement.tolist() + reference.tolist() + output.tolist() + error.tolist())
 
+        MEE = np.mean(np.linalg.norm(errors, axis=1))
         mean_errors = np.mean(np.array(errors), axis=0)
         labels = ['measurement x', 'measurement y', 'reference x', 'reference y', 'output x', 'output y', 'error x', 'error y']
         output_frame = pd.DataFrame(self.test_outputs, columns=labels)
-        output_frame.to_csv(self.filename+'take-{}_MSE={:.3f}.csv'.format(take, np.mean(np.square(errors))))
+        output_frame.to_csv(self.filename+'take-{}_MSE={:.3f}_MEE={:.3f}.csv'.format(take, np.mean(np.sum(np.square(errors), axis=1)), MEE))
         print('Final network errors:', mean_errors)
 
 
@@ -193,6 +198,24 @@ if __name__ == '__main__':
     mlp.get_data(tpath)
 
     s_time = current_time()
+    for t in range(1):
+        i_time = current_time()
+        mlp.train(1000, t)
+        mlp.test_model(t)
+        print('Model obtained in {} ms'.format(current_time() - i_time))
+
+    mlp = MultilayerPerceptron(2, 2, 10)
+    mlp.get_data(tpath)
+
+    for t in range(1):
+        i_time = current_time()
+        mlp.train(1000, t)
+        mlp.test_model(t)
+        print('Model obtained in {} ms'.format(current_time() - i_time))
+
+    mlp = MultilayerPerceptron(2, 2, 10, 8)
+    mlp.get_data(tpath)
+
     for t in range(1):
         i_time = current_time()
         mlp.train(1000, t)
