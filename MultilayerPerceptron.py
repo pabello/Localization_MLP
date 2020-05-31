@@ -18,7 +18,7 @@ class MultilayerPerceptron:
     __relu_derivative = lambda x: int(x >= 0)
 
 
-    def __init__(self, inputs_number, outputs_number, *args, learning_factor=.001, weights=None, biases=None):
+    def __init__(self, inputs_number, outputs_number, *args, learning_factor=.01, weights=None, biases=None):
         """
         Instantiates an MLP - a Multilayer Perceptron.
         @requires inputs_number - number of input data pieces
@@ -92,16 +92,18 @@ class MultilayerPerceptron:
             layer_input = input.reshape(len(input), 1) if not i else self.outputs[i-1]
 
             # update weights and biases
-            self.weights[i] += self.layer_errors[i] * layer_input.T * self.learning_factor
-            self.biases[i] += self.layer_errors[i] * self.learning_factor
+            self.weight_changes[i] += self.layer_errors[i] * layer_input.T * self.learning_factor
+            self.bias_changes[i] += self.layer_errors[i] * self.learning_factor
 
 
     def train(self, epochs, take):
         error_check_cycle = 10
+        self.best_mse = 69
 
         for epoch in range(epochs):
             self.weight_changes = [np.zeros_like(weights) for weights in self.weights]
             self.bias_changes = [np.zeros_like(biases) for biases in self.biases]
+
             if (epoch+1) % error_check_cycle == 0 and epoch < epochs-1:
                 self.test_error()
 
@@ -115,8 +117,11 @@ class MultilayerPerceptron:
                 reference = np.array([ record[1][2], record[1][3] ])
                 output = self.feed_forward(measurement)
                 self.backpropagate(measurement, output, reference.reshape(2,1))
-            self.weights += self.weight_changes
-            self.biases += self.bias_changes
+
+            for i in range(len(self.weights)):
+                self.weights[i] += self.weight_changes[i] / len(self.data)
+                self.biases[i] += self.bias_changes[i] / len(self.data)
+
         save_numpy_file(self.weights, self.biases, self.filename+'take-{}.npy'.format(take))
         with open('log.txt', 'a') as file:
             file.write('\n')
@@ -131,9 +136,25 @@ class MultilayerPerceptron:
             error = output_error(output.flatten(), reference)
             errors.append(error)
 
+        mean_errors = np.mean(abs(np.array(errors)), axis=0)
         with open('log.txt', 'a') as file:
-            file.write(str(np.mean(np.array(errors), axis=0)) + '\n')
-            print(np.mean(np.array(errors), axis=0))
+            file.write(str(mean_errors) + '\n')
+            print(mean_errors)
+
+        # saving the best result
+        MSE = np.mean(np.sum(np.square(errors), axis=1))
+        if MSE < self.best_mse:
+            self.best_mse = MSE
+            print('NEW BEST!')
+            with open('log.txt', 'a') as file:
+                file.write('NEW BEST! ^' + '\n')
+            self.test_outputs = []
+            with open('best_mse.txt', 'w') as file:
+                file.write(str(MSE))
+            self.test_outputs.append(measurement.tolist() + reference.tolist() + output.tolist() + error.tolist())
+            labels = ['measurement x', 'measurement y', 'reference x', 'reference y', 'output x', 'output y', 'error x', 'error y']
+            output_frame = pd.DataFrame(self.test_outputs, columns=labels)
+            output_frame.to_csv('best_match.csv')
 
 
     def test_model(self, take=0):
@@ -175,48 +196,48 @@ if __name__ == '__main__':
     # exit()
     s_time = current_time()
 
-    mlp = MultilayerPerceptron(2, 2, 6, 5, 6)
+    mlp = MultilayerPerceptron(2, 2, 8, 8)
     mlp.get_data(tpath)
 
     for t in range(1):
         i_time = current_time()
-        mlp.train(1000, t)
+        mlp.train(10000, t)
         mlp.test_model(t)
         print('Model obtained in {} ms'.format(current_time() - i_time))
 
-    mlp = MultilayerPerceptron(2, 2, 20)
-    mlp.get_data(tpath)
-
-    for t in range(1):
-        i_time = current_time()
-        mlp.train(1000, t)
-        mlp.test_model(t)
-        print('Model obtained in {} ms'.format(current_time() - i_time))
-
-    mlp = MultilayerPerceptron(2, 2, 10, 10)
-    mlp.get_data(tpath)
-
-    for t in range(1):
-        i_time = current_time()
-        mlp.train(1000, t)
-        mlp.test_model(t)
-        print('Model obtained in {} ms'.format(current_time() - i_time))
-
-    mlp = MultilayerPerceptron(2, 2, 10, 10, 10)
-    mlp.get_data(tpath)
-
-    for t in range(1):
-        i_time = current_time()
-        mlp.train(1000, t)
-        mlp.test_model(t)
-        print('Model obtained in {} ms'.format(current_time() - i_time))
-
-    mlp = MultilayerPerceptron(2, 2, 10, 7, 10, 4)
-    mlp.get_data(tpath)
-
-    for t in range(1):
-        i_time = current_time()
-        mlp.train(1000, t)
-        mlp.test_model(t)
-        print('Model obtained in {} ms'.format(current_time() - i_time))
+    # mlp = MultilayerPerceptron(2, 2, 20)
+    # mlp.get_data(tpath)
+    #
+    # for t in range(1):
+    #     i_time = current_time()
+    #     mlp.train(1000, t)
+    #     mlp.test_model(t)
+    #     print('Model obtained in {} ms'.format(current_time() - i_time))
+    #
+    # mlp = MultilayerPerceptron(2, 2, 10, 10)
+    # mlp.get_data(tpath)
+    #
+    # for t in range(1):
+    #     i_time = current_time()
+    #     mlp.train(1000, t)
+    #     mlp.test_model(t)
+    #     print('Model obtained in {} ms'.format(current_time() - i_time))
+    #
+    # mlp = MultilayerPerceptron(2, 2, 10, 10, 10)
+    # mlp.get_data(tpath)
+    #
+    # for t in range(1):
+    #     i_time = current_time()
+    #     mlp.train(1000, t)
+    #     mlp.test_model(t)
+    #     print('Model obtained in {} ms'.format(current_time() - i_time))
+    #
+    # mlp = MultilayerPerceptron(2, 2, 10, 7, 10, 4)
+    # mlp.get_data(tpath)
+    #
+    # for t in range(1):
+    #     i_time = current_time()
+    #     mlp.train(1000, t)
+    #     mlp.test_model(t)
+    #     print('Model obtained in {} ms'.format(current_time() - i_time))
     print("Finished in {} ms".format(current_time() - s_time))
