@@ -18,7 +18,7 @@ class MultilayerPerceptron:
     __relu_derivative = lambda x: int(x >= 0)
 
 
-    def __init__(self, inputs_number, outputs_number, *args, learning_factor=.01, weights=None, biases=None):
+    def __init__(self, inputs_number, outputs_number, *args, learning_factor=.001, weights=None, biases=None):
         """
         Instantiates an MLP - a Multilayer Perceptron.
         @requires inputs_number - number of input data pieces
@@ -30,8 +30,8 @@ class MultilayerPerceptron:
         self.weights = list()
         self.biases = list()
         self.learning_factor = learning_factor
-        self.activation_function = MultilayerPerceptron.__tanh
-        self.activation_function_derivative = MultilayerPerceptron.__tanh_derivative
+        self.activation_function = MultilayerPerceptron.__sigmoid
+        self.activation_function_derivative = MultilayerPerceptron.__sigmoid_derivative
 
         if weights is not None:
             self.weights = weights
@@ -80,42 +80,28 @@ class MultilayerPerceptron:
 
     def backpropagate(self, input, output, reference):
         # calculating node errors
-        self.layer_errors.append(np.matrix(reference - output))
-        for weights in self.weights[:0:-1]:
-            self.layer_errors.append(weights.T * self.layer_errors[-1])
+        self.layer_errors.append(np.array(reference - output, ndmin=1))
+        for weights, outputs in zip(self.weights[:0:-1], self.outputs[::-1]):
+            errors = (weights.T @ self.layer_errors[-1]).flatten()
+            derivative = (outputs * (1 - outputs)).flatten()
+            self.layer_errors.append(np.multiply(errors, derivative).reshape(len(outputs), 1))
         self.layer_errors.reverse()
 
-        # loop for every layer but the last one
-        for sigma, activation, errors, i in zip(self.pre_squashing, self.outputs, self.layer_errors, range(len(self.weights)-1)):
-            # getting layer outputs' derivatives
-            if self.activation_function == MultilayerPerceptron.__sigmoid:
-                derivative_values = activation * (1 - activation)
-            elif self.activation_function == MultilayerPerceptron.__tanh:
-                derivative_values = 1 - activation**2
-            else:
-                derivative_values = self.activation_function_derivative(sigma)
+        # loop through all the layers
+        for i in range(len(self.weights)):
+            layer_input = input.reshape(len(input), 1) if not i else self.outputs[i-1]
 
-            if not i:
-                layer_input = input.reshape(len(input),1)
-            else:
-                layer_input = self.outputs[i-1]
-
-            # calculating weights and biases changes
-            self.weight_changes[i] += np.multiply(errors, derivative_values) * layer_input.T * self.learning_factor
-            self.bias_changes[i] += errors * self.learning_factor
-
-        # for the last layer it differs
-        self.weight_changes[len(self.weights)-1] += self.layer_errors[-1] @ self.outputs[-1].T * self.learning_factor
-        self.bias_changes[len(self.weights)-1] += self.layer_errors[-1] * self.learning_factor
+            # update weights and biases
+            self.weights[i] += self.layer_errors[i] * layer_input.T * self.learning_factor
+            self.biases[i] += self.layer_errors[i] * self.learning_factor
 
 
     def train(self, epochs, take):
         error_check_cycle = 10
-        self.weight_changes = [np.zeros_like(weights) for weights in self.weights]
-        self.bias_changes = [np.zeros_like(biases) for biases in self.biases]
-        record_counter = 0
 
         for epoch in range(epochs):
+            self.weight_changes = [np.zeros_like(weights) for weights in self.weights]
+            self.bias_changes = [np.zeros_like(biases) for biases in self.biases]
             if (epoch+1) % error_check_cycle == 0 and epoch < epochs-1:
                 self.test_error()
 
@@ -125,18 +111,12 @@ class MultilayerPerceptron:
                 self.layer_errors = []
                 self.outputs = []
 
-                record_counter += 1
                 measurement = np.array([ record[1][0], record[1][1] ])
                 reference = np.array([ record[1][2], record[1][3] ])
                 output = self.feed_forward(measurement)
                 self.backpropagate(measurement, output, reference.reshape(2,1))
-
-                if record_counter % 64 == 0 or record_counter == len(self.data):
-                    for i in range(len(self.weights)):
-                        self.weights[i] += self.weight_changes[i] / record_counter
-                        self.biases[i] += self.bias_changes[i] / record_counter
-                        self.weight_changes = [wc * 0 for wc in self.weight_changes]
-                        self.bias_changes = [bc * 0 for bc in self.bias_changes]
+            self.weights += self.weight_changes
+            self.biases += self.bias_changes
         save_numpy_file(self.weights, self.biases, self.filename+'take-{}.npy'.format(take))
         with open('log.txt', 'a') as file:
             file.write('\n')
@@ -153,7 +133,7 @@ class MultilayerPerceptron:
 
         with open('log.txt', 'a') as file:
             file.write(str(np.mean(np.array(errors), axis=0)) + '\n')
-        # print(np.mean(np.array(errors), axis=0))
+            print(np.mean(np.array(errors), axis=0))
 
 
     def test_model(self, take=0):
@@ -193,18 +173,9 @@ if __name__ == '__main__':
     # mlp = MultilayerPerceptron(0, 0, weights=model[0], biases=model[1])
     # mlp.test_model()
     # exit()
-
-    mlp = MultilayerPerceptron(2, 2, 6, 5)
-    mlp.get_data(tpath)
-
     s_time = current_time()
-    for t in range(1):
-        i_time = current_time()
-        mlp.train(1000, t)
-        mlp.test_model(t)
-        print('Model obtained in {} ms'.format(current_time() - i_time))
 
-    mlp = MultilayerPerceptron(2, 2, 10)
+    mlp = MultilayerPerceptron(2, 2, 6, 5, 6)
     mlp.get_data(tpath)
 
     for t in range(1):
@@ -213,7 +184,34 @@ if __name__ == '__main__':
         mlp.test_model(t)
         print('Model obtained in {} ms'.format(current_time() - i_time))
 
-    mlp = MultilayerPerceptron(2, 2, 10, 8)
+    mlp = MultilayerPerceptron(2, 2, 20)
+    mlp.get_data(tpath)
+
+    for t in range(1):
+        i_time = current_time()
+        mlp.train(1000, t)
+        mlp.test_model(t)
+        print('Model obtained in {} ms'.format(current_time() - i_time))
+
+    mlp = MultilayerPerceptron(2, 2, 10, 10)
+    mlp.get_data(tpath)
+
+    for t in range(1):
+        i_time = current_time()
+        mlp.train(1000, t)
+        mlp.test_model(t)
+        print('Model obtained in {} ms'.format(current_time() - i_time))
+
+    mlp = MultilayerPerceptron(2, 2, 10, 10, 10)
+    mlp.get_data(tpath)
+
+    for t in range(1):
+        i_time = current_time()
+        mlp.train(1000, t)
+        mlp.test_model(t)
+        print('Model obtained in {} ms'.format(current_time() - i_time))
+
+    mlp = MultilayerPerceptron(2, 2, 10, 7, 10, 4)
     mlp.get_data(tpath)
 
     for t in range(1):
